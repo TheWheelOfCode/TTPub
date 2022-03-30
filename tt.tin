@@ -1,0 +1,386 @@
+#NOP fill in these variables or do so with the "setpath" and the "setlocalpath" aliases
+#variable {path} {Games}
+#variable {localpath} {games}
+
+#NOP config options
+
+#config {screen reader} {on}
+#config speedwalk off
+#CONFIG {command echo} {off}
+#split
+#config {repeat enter} {on}
+
+#nop MSP
+
+#nop This script is written for v2.02.10 and higher
+
+#EVENT {PROGRAM START}
+{
+    #nop Find out what OS you are running.;
+    #script {SYSTEM[OS]} {uname -amnprsv};
+    #script {SYSTEM[KERNEL]} {uname -s};
+    #script {SYSTEM[VERSION]} {tail /proc/version};
+    #switch {"$SYSTEM[VERSION][1]"}
+    {
+        #case {"%*Microsoft@Microsoft.com%*"}
+        {
+            #variable OS WSL
+        };
+        #case {"CYGWIN%*"}
+        {
+            #variable OS Cygwin
+        };
+        #default
+        {
+            #switch {"$SYSTEM[OS][1]"}
+            {
+                #case {"Android"}
+                {
+                    #variable OS Android
+                };
+                #case {"Cygwin"}
+                {
+                    #variable OS Cygwin
+                };
+                #case {"WSL"}
+                {
+                    #variable OS WSL
+                };
+                #case {"GNU/Linux"}
+                {
+                    #variable OS Linux
+                };
+                #default
+                {
+                    #switch {"$SYSTEM[KERNEL][1]"}
+                    {
+                        #case {"Linux"}
+                        {
+                            #variable OS Linux
+                        };
+                        #case {"CYGWIN%*"}
+                        {
+                            #variable OS Cygwin
+                        };
+                        #case {"Darwin"}
+                        {
+                            #variable OS Darwin
+                        };
+                        #default
+                        {
+                            #variable OS Unknown
+                        }
+                    }
+                }
+            }
+        }
+    };
+    #if {"$OS" == "WSL"}
+    {
+        #variable {sound_dir} {C:\sounds\}
+    };
+    #else
+    {
+        #variable {sound_dir} {games/sounds}
+    }
+}
+
+#EVENT {IAC WILL MSP}
+{
+    #send {\xFF\xFD\x5A\}
+}
+#ACTION {%*!!SOUND(%1.%2 V=%3 P=%4 U=%5:%6/%7/)%*}
+{
+#system play -v $vol "$path/sounds/%1.%2" -q  &;
+#line gag
+}
+
+#ACTION {^!!MUSIC({\S*}{.*})$}
+{
+    #nop I cannot be bothered adding support for background music.;
+    #line gag
+}
+#ALIAS {playsound %1}
+{
+    #if {"%1" == "Off"}
+    {
+        #return
+    };
+    #switch {"$OS"}
+    {
+        #case {"{Android|Linux}"}
+        {
+            #if {"%1" == "%i%*.mp3"}
+            {
+                #system mpg123 $sound_dir/%1 &>/dev/null &
+            };
+            #elseif {"%1" == "%i%*.ogg"}
+            {
+                #system ogg123 $sound_dir/%1 &>/dev/null &
+            };
+            #elseif {"%1" == "%i%*.wav"}
+            {
+                #system play $sound_dir/%1 &>/dev/null &
+            };
+            #else
+            {
+                #showme PLAYSOUND: Unknown sound file: %1
+            }
+        };
+        #case {"Cygwin"}
+        {
+            #if {"%1" == "%i%*.wav"}
+            {
+                #system cat $sound_dir/%1 > /dev/dsp &
+            };
+            #else
+            {
+                #system cygstart $sound_dir/%1 &
+            }
+        };
+        #case {"Darwin"}
+        {
+            #system play $sound_dir/%1 &
+        };
+        #case {"WSL"}
+        {
+            #system {powershell.exe -c '(New-Object Media.SoundPlayer "${sound_dir}%1").PlaySync()' &}
+        }
+    }
+}
+
+#ALIAS {tts}
+{
+    #switch {"$OS"}
+    {
+        #case {"Android"}
+        {
+            #system {termux-tts-speak %0 &}
+        };
+        #case {"{Cygwin|Linux}"}
+        {
+            #system {espeak "%0" &}
+        };
+        #case {"Darwin"}
+        {
+            #system {say %0 &}
+        };
+        #case {"WSL"}
+        {
+            #nop $SpeechSynthesizer.SelectVoice("Microsoft Zira Desktop");
+            #nop $SpeechSynthesizer.rate=6;
+            #system {powershell.exe -c 'Add-Type –AssemblyName System.Speech;$SpeechSynthesizer = New-Object –TypeName System.Speech.Synthesis.SpeechSynthesizer;$SpeechSynthesizer.Speak("%0")' &}
+        }
+    }
+}
+
+#nop This script is written for v1.99.7 and higher
+
+#alias {log}
+{
+	#if {"%0" == "on"}
+	{
+		#if {"$logging" != "on"}
+		{
+			#format {logfile} {$worldname %t.txt} {%Y-%m-%d};
+			#log append $localpath/logs/$logfile;
+			#var logging on
+		};
+		#else
+		{
+			#showme You are already logging.
+		}
+	};
+	#elseif {"%0" == "off"}
+	{
+		#if {"$logging" == "on"}
+		{
+			#log off;
+			#var logging off
+		};
+		#else
+		{
+			#showme You are not logging.
+		}
+	};
+	#else
+	{
+		#showme Turn logging on or off?
+	}
+}
+
+#NOP sound and math alias
+#var {vol} {0.30}
+#alias {fixaudio} {#system sudo killall coreaudiod}
+#alias {play %1.%2}
+{
+#system play -v $vol "$path/sounds/%1.%2" -q  &;
+#gag {^[[0m#OK: EXECUTING %0}
+}
+#alias {{vol|volume} %1}
+{
+#variable {vol} {%1};
+	#showme {Sound volume now at %1.}
+}
+#macro {\e[20~}
+{
+	#showme {Sound volume is at $vol\.}
+}
+#macro {\e[23~}
+{
+#math {vol} {$vol - .05};
+play luaaudio/down.mp3;#showme {Sound volume now at $vol\.}
+}
+#macro {\e[24~}
+{
+#math {vol} {$vol + .05};
+	play luaaudio/up.mp3;#showme {Sound volume now at $vol\.}
+}
+#macro {\e[21~}
+{
+#if {"$vol" != "0"}
+{
+play luaaudio/off.mp3;#variable {oldvol} {$vol};
+#variable {vol} {0};
+#showme {Your soundpack has been muted.}
+};
+#elseif {"$vol" == "0"}
+{
+#variable {vol} {$oldvol};
+play luaaudio/on.mp3;#showme {Your soundpack has been unmuted. Sound volume now at $vol\.}
+}
+}
+#alias {vol?} 
+{
+;
+#showme {Your volume is $vol\.}
+}
+#function {math}
+{
+    #math result {%0}
+}
+#function {intmath}
+{
+#nop for the macs among us. #math returns floats, even if it doesn't need to. I.E. 12.00;
+#math result %0;
+#format {result} {%d} {%1}
+}
+#function {int} {#format {result} {%d} {%1}}
+#sub {#OK:   %1 %2 LOADED.} {loading %1 %2}
+#gag {^$}
+#event {SESSION ACTIVATED}
+{#buffer end}
+
+
+#nop This script provides three aliasses that allow you to maintain a list of muds as well as autologin capabilities. With addworld <world> <host> <port> [<character> [password]] you can add a world to the list. With deleteworld <world> you can remove a world from the list. With connect <world> you'll connect to a world, if a character name and password has been given a character will automagically be logged in as well. The worlds are automatically saved to worlddata.tin and will be loaded when the script itself is read.
+
+#class worlddata read $path/world/worlddata.tin
+
+#if {&{worldlist} == 0}
+{
+	#class worlddata open;
+	#list worldlist clr;
+	#class worlddata close
+}
+
+#alias {addworld}
+{
+	#if {"%3" == ""}
+	{
+		#showme Syntax: addworld <name> <host> <port> [character name] [password]
+	};
+	#else
+	{
+		#var worldlist[%1][name] %1;
+		#var worldlist[%1][host] %2;
+		#var worldlist[%1][port] %3;
+		#if {"%4" != ""}
+		{
+			#var worldlist[%1][char] %4
+		};
+		#if {"%5" != ""}
+		{
+			#var worldlist[%1][pass] %5
+		};
+		#if {&worldlist[%1][char]}
+		{
+			#system mkdir $path/world/%2;
+#class %2 write $path/world/%2/%2.tin;
+#class %1 write $path/world/%2/%1.tin;
+#class %2_variables write $path/world/%2/%2_variables.tin;
+#showme The world %1 (%2 %3) and the character %4 (%5) has been added.
+		};
+		#else
+		{
+#system mkdir $path/world/%2;
+#class %2 write $path/world/%2/%2.tin;
+#class %1 write $path/world/%2/%1.tin;
+#class %2_variables write $path/world/%2/%2_variables.tin;
+#showme The world %1 (%2 %3) has been added.
+		};
+		#class worlddata write $path/world/worlddata.tin
+	}
+}
+
+#alias {deleteworld}
+{
+	#if {&worldlist[%1] != 0}
+	{
+		#unvar worldlist[%1];
+		#class worlddata write $path/world/worlddata.tin;
+#showme The world %1 has been deleted.
+	};
+	#else
+	{
+		#showme The world %1 couldn't be found.
+	}
+}
+
+#alias {connect}
+{
+	#if {"%1" == ""}
+	{
+		#echo {%h} {{ WORLD LIST }};
+
+		#foreach {*worldlist[]} {world}
+		{
+			#echo {%-20s %s %s %s} {$worldlist[$world][name]} {$worldlist[$world][host]} {$worldlist[$world][port]} {$worldlist[$world][char]}
+		}
+	};
+	#elseif {&worldlist[%1] != 0}
+	{
+		#ses $worldlist[%1][name] $worldlist[%1][host] $worldlist[%1][port];
+
+		#if {$worldlist[%1][char]}
+		{
+			#$worldlist[%1][name] $worldlist[%1][char];
+
+			#if {$worldlist[%1][pass]}
+			{
+				#$worldlist[%1][name] $worldlist[%1][pass]
+			}
+		}
+	};
+	#else
+	{
+		#showme Couldn't find world %1.
+	}
+}
+#action {%1 '%2' CONNECTED TO '%3' PORT '%4'} 
+{
+#variable {worldname} {%2};
+#variable {worldurl} {%3};
+#variable {worldport} {%4};
+#class %3 read $path/world/$worldurl/%3.tin;
+#class %2 read $path/world/$worldurl/%2.tin;
+#class %3_variables read $path/world/$worldurl/%3_variables.tin;
+log on
+}
+#event {SESSION DISCONNECTED} {#class $worldurl_variables write $path/world/$worldurl/$worldurl_variables.tin}
+
+#macro {\e\t} {#ses +}
+#macro {\e\e[Z} {#ses -}
+
+#NOP Stuff I am still working on
+#alias {setpath} {#variable {path} {%1};#showme okay, your path has been set to %1.}
+#alias {setlocalpath} {#variable {localpath} {%1};#system mkdir %1;#showme okay, your variables and logs will now go to %1.}
